@@ -1,0 +1,184 @@
+---
+title: "World Happiness Report"
+author: "Connor Moss"
+date: "2023-07-19"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r Load Dataset}
+
+WHR <- read.csv("~/Downloads/Journey to Code/R Stuff/World Happy Report/WHR.csv", header=FALSE, stringsAsFactors=TRUE)
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+The World Happiness Report is published every year in order to see which countries truly are the most happy. Through various synthetic metrics, we look to evaluate which of these factors are most important. In addition, we'll look to any other trends that might become clear through the analysis.
+
+## Clean the data
+
+
+
+First, let's load the necessary libraries, add some column names, and check for missing values:
+
+
+```{r Libraries, message=FALSE}
+library(dplyr)
+library(corrplot)
+library(ggplot2)
+library(FactoMineR)
+library(corrr)
+library(ggcorrplot)
+library(factoextra)
+
+```
+
+```{r}
+
+#New_WHR eliminates the columns of highs and lows on the box and whisker plots and renames the columns
+New_WHR <- WHR[, c(1:3, 6:12)]
+
+colnames(New_WHR)[c(3:10)] <- c("Happiness Score", "Dystopia", "GDP Per Capita", "Social Support",
+                                "Healthy Life Expectancy", "Freedom Life Choices",
+                                "Generosity", "Perceptions of Corruption")
+
+#Look for missing and duplicated data 
+sum(is.na(New_WHR))
+sum(duplicated(New_WHR))
+```
+## EDA 
+We can look at the five number summary of our numeric columns to get an idea of how our data is organized, but first we must turn them into numeric values as they were loaded in as factors
+```{r Numeric Conversion, echo=FALSE, warning=FALSE}
+New_WHR$`Happiness Score` <- as.numeric(as.character(New_WHR$`Happiness Score`))
+New_WHR$Dystopia <- as.numeric(as.character(New_WHR$Dystopia))
+New_WHR$`GDP Per Capita` <- as.numeric(as.character(New_WHR$`GDP Per Capita`))
+New_WHR$`Social Support` <- as.numeric(as.character(New_WHR$`Social Support`))
+New_WHR$`Healthy Life Expectancy` <- as.numeric(as.character(New_WHR$`Healthy Life Expectancy`))
+New_WHR$`Freedom Life Choices` <- as.numeric(as.character(New_WHR$`Freedom Life Choices`))
+New_WHR$Generosity <- as.numeric(as.character(New_WHR$Generosity))
+New_WHR$`Perceptions of Corruption` <- as.numeric(as.character(New_WHR$`Perceptions of Corruption`))
+
+
+```
+
+Changing type of the variable introduced a null value into each column so we handle that and then we can look at our five number summary. We can see that the happiness score ranges from 2.4 to 7.8, with an almost identical mean and median of approximately 5.55. Given that Happiness Score is a additive measure of the other metrics in the dataset it seems that Dystopia and GDP Per Capita have the strongest weight in determining Happiness Score, however, we will later be determining the most important variables with Principal Component Analysis. 
+
+```{r Five Number Sum, warning=FALSE}
+Clean_WHR <- na.omit(New_WHR)
+summary(Clean_WHR[,3:10])
+```
+
+The correlation matrix allows us to see which variables are most correlated with Happiness Score.
+Social Support and GDP are most correlated with Happiness as their respective circles are the largest. 
+GDP and Life Expectancy are the most correlated with each other with a respective value of 0.82.
+
+
+```{r Correlation Matrix, echo=FALSE, warning=FALSE}
+correlation_matrix <- cor(Clean_WHR[3:10])
+corrplot(correlation_matrix, method = "circle", tl.cex = 0.7, tl.srt = 45)
+```
+
+## Principal Component Analysis 
+
+Now before we move forward with PCA, we must ensure that our dataset meets the conditions necessary to have applicable results:
+There are a few conditions that we can assume are met given the nature of PCA: 
+Linearity among the data, Homescedasticity (given that PCA assumes roughly constant variance among all directions), and that the data we are using is all numeric. The other few we can check with some code.
+
+```{r Conditions}
+#Non-zero variance 
+std_data <- apply(Clean_WHR[,3:10], 2, sd)
+if (all(std_data > 0)) {
+  print("Non-zero variance - Satisfied")
+} else {
+  print("Non-zero variance - Not satisfied")
+}
+
+#Covariance Matrix
+data_scaled <- scale(Clean_WHR[,3:10], center = TRUE, scale = TRUE)
+cov_matrix <- cov(data_scaled)
+if (all(is.finite(cov_matrix))) {
+  print("Covariance matrix condition - Satisfied")
+} else {
+  print("Covariance matrix condition - Not satisfied")
+}
+```
+
+I decided to intentionally leave out Happiness Score in the PCA as it is an additive measure of all of the other components. 
+
+```{r PCA Summary , echo=TRUE}
+#Create one more dataframe without Happiness Score
+New_WHR_PCA <- New_WHR[,4:10]
+#Normalize Datas
+New_WHR_PCA<- scale(New_WHR_PCA)
+New_WHR_PCA <- na.omit(New_WHR_PCA)
+sum(is.na(New_WHR_PCA))
+#Better Correlation Plot 
+corr_matrix <- cor(New_WHR_PCA)
+ggcorrplot(corr_matrix)
+#PCA Results
+PCAResult <- princomp(corr_matrix)
+summary(PCAResult)
+fviz_eig(PCAResult, addlabels = TRUE)
+```
+
+
+We can see that the first principal component explains almost 65% of the variance. The cumulitive proportion of the first three components explain over 82% of the variance, so we can accurately represent the data. 
+
+```{r Loading Matrix}
+PCAResult$loadings[, 1:2]
+```
+
+The loading matrix displays the first three components. We can (not surprisingly) that 'Dystopia' has a relatively high positive holding across all three components -- suggesting a higher 'Dystopia' value relates to a higher Happiness Score. However, it becomes more interesting when we look at the variable 'Generosity.' The first component shows a value of 0.371 suggesting that countries with higher levels of generosity are likely to have higher scores of happiness. However, looking at component two we find that 'Generosity' has an even higher value though this time it is negative. This implies the contribution to a different aspect of the Happiness Score distinct from component one; more specifically, component two implies that countries with higher levels of 'Generosity' tend to have lower scores for this aspect of happiness. 
+
+What does it mean? PCA tells us that 'Generosity has a significant role in shaping two distinct aspects of happiness within the dataset. It not only affects the overall happiness level of countries (as represented by component one) but also influences a specific dimension of happiness (as seen in component two). 
+
+Other key insights from the analysis were the negative influence on Happiness Score that higher 'GDP Per Capita', 'Social Support', and 'Life Expectancy' scores seemed to have. 
+
+This seeming to give way to the understood idea that happiness -though represented by a few concrete variables- is still quite complex to understand. 
+
+```{r}
+fviz_pca_var(PCAResult, col.var = "cos2",
+             gradient.cols = c("red", "darkorchid", "green"),
+             repel = TRUE)
+```
+
+The last visualization determines how much each variable is represented in a given component. The squared cosine is the numerical value that is computed to achieve this. Though this visual will simplify that understanding as red is associated with a low squared cosine, purple is a medium squared cosine value, and green is a high squared cosine value. 
+
+## Linear Regression 
+
+Finally, let's try to fit the best model for predicting Happiness Score (if we were to introduce a new country). Upon performing the best subsets procedure of model selection, we find that with only two variables 'Dystopia' and 'Perceptions of Corruption' our model is able to explain almost 90% of the variance as given by the adjusted R-squared value.
+```{r include=FALSE}
+library(leaps)
+library(HH)
+```
+
+```{r}
+all = regsubsets(`Happiness Score` ~ Dystopia +`GDP Per Capita` +`Social Support`+ `Healthy Life Expectancy`+`Freedom Life Choices`+`Generosity`+ `Perceptions of Corruption` ,data=New_WHR)
+summaryHH(all)
+```
+
+Our model is Happiness Score-hat = 3.03 + Dystopia*(1.06) + Corruption*(3.77). 
+We can feel confident in our model in that both of our terms are significant with a p-value of approximately zero. The full analysis is that our model:
+F-Statistic = 57.24, Degrees of Freedom = 2, 143, p-value = 0.00001
+
+```{r}
+Pred_model <- lm(`Happiness Score`~Dystopia + `Perceptions of Corruption`, data = New_WHR)
+summary(Pred_model)
+```
+And from that we can see our linear model that we can test on that unnamed country. But first, let's check our conditions to make sure we have a functioning and repeatable model:
+From the four plots we can ensure that our linearity condition is met as the Res vs Fitted plot has no unusual structure and the points are randomly scattered. Our Normal QQ plot checks off our normality condition as many of the points fall on or near the line. We do have a slight probelm on the upper tail which could possibly present a problem, but for the sake of brevity in this short example we are going to ignore it (but note that this could be solved with a transformation). And finally we cann see that other than point 144 which is close, none of the points are outside of Cook's distance meaning that none of our data is unusual or extreme.
+```{r}
+plot(Pred_model, 1:4)
+```
+
+And to check how well our model does let's produce some values for 'P-value Paradise.'
+P-value Paradise has a Dystopia score of 1.883 and a 'Perception of Corruption' score of 0.088. It's a middle of the pack country in terms of the numbers. And given that the mean of the Happiness Score for all of the countries was around 5.5 we should be expecting a number right around there. 
+
+```{r}
+3.028 + 1.060*(1.883) + 3.775*(0.088)
+```
+
+## Conclusion
+And with that we can say that our model does a decent job of predicting Happiness Scores of countries with relatively similar scores to the dataset. Much more advanced exploration can be performed in future projects, this was merely an introduction and an opportunity to perform PCA. The next step would most likely be to introduce clustering (k-means or hierarchical) in order to find cultural or regional insights between variables that  predict happiness. The other logical next step would be to cross-validate in order to address issues of overfitting in addition to providing a more reliable estimate of the model's performance with new, unseen data. 
